@@ -17,6 +17,7 @@ class Evaluation(Base):
     tool_eval_json: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     issues_json: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True)
     suggestions_json: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True)
+    needs_review: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -33,6 +33,14 @@ class ImprovementSuggestionSchema(BaseModel):
 class EvaluationCreateSchema(BaseModel):
 
     conversation_id: str = Field(..., description="Conversation to evaluate")
+    agent_version: Optional[str] = Field(None, description="Agent version (optional)")
+    evaluator_ids: Optional[list[str]] = Field(None, description="Specific evaluators to run (default: all)")
+
+
+class EvaluationBatchCreateSchema(BaseModel):
+
+    conversation_ids: list[str] = Field(..., min_length=1, description="Conversations to evaluate")
+    agent_version: Optional[str] = Field(None, description="Agent version (optional)")
     evaluator_ids: Optional[list[str]] = Field(None, description="Specific evaluators to run (default: all)")
 
 

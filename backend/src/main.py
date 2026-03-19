@@ -6,7 +6,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from src.api.annotations import router as annotations_router
+from src.api.calibration import router as calibration_router
+from src.api.conversations import router as conversations_router
+from src.api.evaluations import router as evaluations_router
+from src.api.evaluators import router as evaluators_router
 from src.api.health import router as health_router
+from src.api.suggestions import router as suggestions_router
 from src.db.session import engine
 from src.models.base import Base
 
@@ -49,4 +55,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(health_router, tags=["health"])
+app.include_router(health_router)
+app.include_router(conversations_router)
+app.include_router(annotations_router, prefix="/conversations")
+app.include_router(evaluations_router)
+app.include_router(suggestions_router)
+app.include_router(calibration_router)
+app.include_router(evaluators_router)
