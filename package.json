@@ -4,7 +4,12 @@
   "scripts": {
     "dev:backend": "cd backend && uvicorn src.main:app --reload --host 0.0.0.0 --port 8000",
     "dev:frontend": "cd frontend && npm run dev",
-    "install:all": "cd frontend && npm install",
-    "install:backend": "cd backend && pip install -r requirements.txt"
+    "dev:app": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend && pip install -r requirements.txt",
+    "install:app": "npm run install:backend && npm run install:frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
