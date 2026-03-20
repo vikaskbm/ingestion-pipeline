@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./eval.db")
 # Render/Heroku use postgres://; SQLAlchemy requires postgresql://
 if DATABASE_URL.startswith("postgres://"):
+    print("Replacing postgres:// with postgresql://", DATABASE_URL)
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # SQLite requires check_same_thread=False
