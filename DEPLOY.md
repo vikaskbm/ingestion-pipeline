@@ -22,11 +22,13 @@ The blueprint provisions: Postgres, Redis, and the backend web service.
 ## Railway
 
 1. Create a new project and connect your repo
-2. Add PostgreSQL and Redis from the Railway marketplace
-3. Link `DATABASE_URL` and `REDIS_URL` to the backend service
-4. Set `RAILWAY_DOCKERFILE_PATH` is not needed—root `Dockerfile` is used
-5. Add `OPENAI_API_KEY` in variables
+2. Add PostgreSQL from the Railway marketplace (optional; SQLite fallback if `DATABASE_URL` is unset)
+3. Link `DATABASE_URL` to the Postgres service (or leave unset for SQLite)
+4. Add `OPENAI_API_KEY` in variables
+5. **Generate a public domain**: Settings → Networking → Generate Domain
 6. Deploy
+
+If the app is not accessible: ensure a public domain is generated and the deployment succeeded (check logs).
 
 ## Health checks
 

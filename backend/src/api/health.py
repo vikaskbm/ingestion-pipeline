@@ -7,6 +7,11 @@ from src.db.session import engine
 router = APIRouter()
 
 
+@router.get("/")
+def root():
+    return {"message": "AI Agent Evaluation Pipeline", "docs": "/docs", "health": "/health"}
+
+
 @router.get("/health")
 def health_check():
     """Liveness probe: basic app responsiveness."""
