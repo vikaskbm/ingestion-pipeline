@@ -28,7 +28,7 @@ def get_evaluator_metrics(
     evaluator_id: str,
     db: Session = Depends(get_db),
 ):
-    """Get calibration/accuracy metrics for an evaluator (precision, recall, F1, correlation)."""
+    """Get calibration/accuracy metrics for an evaluator (Pearson correlation, RMSE)."""
     if evaluator_id not in EVALUATOR_REGISTRY:
         raise HTTPException(status_code=404, detail=f"Evaluator not found: {evaluator_id}")
 
@@ -40,11 +40,7 @@ def get_evaluator_metrics(
             {
                 "score_type": m.score_type,
                 "pearson_correlation": m.pearson_correlation,
-                "spearman_correlation": m.spearman_correlation,
                 "rmse": m.rmse,
-                "precision": m.precision,
-                "recall": m.recall,
-                "f1": m.f1,
                 "sample_count": m.sample_count,
                 "divergence_detected": m.divergence_detected,
                 "computed_at": m.computed_at,

@@ -1,6 +1,6 @@
 """
 Calibration service: compare automated evaluations with human annotations.
-Computes Pearson/Spearman correlation, RMSE, precision/recall/F1.
+Computes Pearson correlation and RMSE.
 """
 
 import math
@@ -25,7 +25,7 @@ ANNOTATION_TO_SCORE: dict[str, list[str]] = {
     "overall": ["overall"],
 }
 
-# Labels considered "negative" (human caught failure) for precision/recall
+# Labels considered "negative" (human caught failure) for binary classification
 NEGATIVE_LABELS = frozenset({"bad", "poor", "fail", "failed", "low", "negative", "0", "no"})
 POSITIVE_LABELS = frozenset({"good", "excellent", "pass", "high", "positive", "1", "yes"})
 
@@ -38,11 +38,7 @@ class CalibrationResult:
     evaluator_id: str
     score_type: Optional[str]
     pearson_correlation: Optional[float]
-    spearman_correlation: Optional[float]
     rmse: Optional[float]
-    precision: Optional[float]
-    recall: Optional[float]
-    f1: Optional[float]
     sample_count: int
     divergence_detected: bool
 
@@ -114,36 +110,15 @@ def _fetch_pairs(db: Session, agent_version: Optional[str] = None) -> list[tuple
 def _compute_numeric_metrics(
     auto_scores: list[float],
     human_scores: list[float],
-) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """Compute Pearson, Spearman, RMSE. Requires at least 2 pairs."""
+) -> tuple[Optional[float], Optional[float]]:
+    """Compute Pearson correlation and RMSE. Requires at least 2 pairs."""
     if len(auto_scores) < 2 or len(human_scores) < 2 or len(auto_scores) != len(human_scores):
-        return None, None, None
+        return None, None
 
     pearson = stats.pearsonr(auto_scores, human_scores)
-    spearman = stats.spearmanr(auto_scores, human_scores)
     pearson_r = float(pearson.statistic) if hasattr(pearson, "statistic") else pearson[0]
-    spearman_r = float(spearman.statistic) if hasattr(spearman, "statistic") else spearman[0]
-
     rmse = math.sqrt(sum((a - h) ** 2 for a, h in zip(auto_scores, human_scores)) / len(auto_scores))
-    return pearson_r, spearman_r, rmse
-
-
-def _compute_classification_metrics(
-    auto_positive: list[bool],
-    human_positive: list[bool],
-) -> tuple[Optional[float], Optional[float], Optional[float]]:
-    """Compute precision, recall, F1. Positive = failure/negative label."""
-    if len(auto_positive) != len(human_positive) or not auto_positive:
-        return None, None, None
-
-    tp = sum(1 for a, h in zip(auto_positive, human_positive) if a and h)
-    fp = sum(1 for a, h in zip(auto_positive, human_positive) if a and not h)
-    fn = sum(1 for a, h in zip(auto_positive, human_positive) if not a and h)
-
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
-    return precision, recall, f1
+    return pearson_r, rmse
 
 
 def run_calibration(
@@ -159,20 +134,13 @@ def run_calibration(
     if not pairs:
         return []
 
-    # Build (evaluator_id, score_type) -> (auto_scores, human_scores) for numeric
-    # Build (evaluator_id,) -> (auto_positive, human_positive) for binary
     numeric_data: dict[tuple[str, str], tuple[list[float], list[float]]] = {}
-    binary_data: dict[str, tuple[list[bool], list[bool]]] = {}
 
     for ev, labels in pairs:
         scores = ev.scores_json or {}
-        issues = ev.issues_json or []
-        has_issues = any(i.get("severity") == "critical" for i in issues if isinstance(i, dict))
-        auto_positive = scores.get("overall", 1.0) < SCORE_THRESHOLD or has_issues
 
         for ann_type, label in labels.items():
             human_float = _parse_label_as_float(label)
-            human_binary = _label_to_binary(label)
 
             score_keys = ANNOTATION_TO_SCORE.get(ann_type, ["overall"])
             key = score_keys[0] if score_keys else "overall"
@@ -191,13 +159,6 @@ def run_calibration(
                 numeric_data[k][0].append(auto_score)
                 numeric_data[k][1].append(human_float)
 
-            if human_binary is not None:
-                bin_key = f"aggregate_{ann_type}"
-                if bin_key not in binary_data:
-                    binary_data[bin_key] = ([], [])
-                binary_data[bin_key][0].append(auto_positive)
-                binary_data[bin_key][1].append(human_binary)
-
     results: list[CalibrationResult] = []
     seen: set[tuple[str, Optional[str]]] = set()
 
@@ -205,7 +166,7 @@ def run_calibration(
         if (ev_id, score_type) in seen or len(auto_s) < 2:
             continue
         seen.add((ev_id, score_type))
-        pearson, spearman, rmse = _compute_numeric_metrics(auto_s, human_s)
+        pearson, rmse = _compute_numeric_metrics(auto_s, human_s)
         if pearson is None:
             continue
         div = pearson < CORRELATION_THRESHOLD
@@ -214,11 +175,7 @@ def run_calibration(
                 evaluator_id=ev_id,
                 score_type=score_type,
                 pearson_correlation=pearson,
-                spearman_correlation=spearman,
                 rmse=rmse,
-                precision=None,
-                recall=None,
-                f1=None,
                 sample_count=len(auto_s),
                 divergence_detected=div,
             )
@@ -228,51 +185,8 @@ def run_calibration(
             score_type=score_type,
             correlation=pearson,
             pearson_correlation=pearson,
-            spearman_correlation=spearman,
             rmse=rmse,
-            precision=None,
-            recall=None,
-            f1=None,
             sample_count=len(auto_s),
-            divergence_detected=div,
-        )
-        db.add(metric)
-
-    for bin_key, (auto_p, human_p) in binary_data.items():
-        ev_id = "aggregate"
-        st = bin_key.replace("aggregate_", "") if bin_key.startswith("aggregate_") else "binary"
-        if (ev_id, st) in seen or len(auto_p) < 2:
-            continue
-        prec, rec, f1 = _compute_classification_metrics(auto_p, human_p)
-        if prec is None:
-            continue
-        div = f1 < CORRELATION_THRESHOLD if f1 is not None else False
-        seen.add((ev_id, st))
-        results.append(
-            CalibrationResult(
-                evaluator_id=ev_id,
-                score_type=st,
-                pearson_correlation=None,
-                spearman_correlation=None,
-                rmse=None,
-                precision=prec,
-                recall=rec,
-                f1=f1,
-                sample_count=len(auto_p),
-                divergence_detected=div,
-            )
-        )
-        metric = CalibrationMetric(
-            evaluator_id=ev_id,
-            score_type=st,
-            correlation=None,
-            pearson_correlation=None,
-            spearman_correlation=None,
-            rmse=None,
-            precision=prec,
-            recall=rec,
-            f1=f1,
-            sample_count=len(auto_p),
             divergence_detected=div,
         )
         db.add(metric)
